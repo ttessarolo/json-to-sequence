@@ -15,7 +15,7 @@
     "version": "standard-version",
     "push": "git push --follow-tags",
     "publish": "npm publish",
-    "release": "npm run commit && npm run version && npm run push && npm run publish"
+    "release": "npm run commit && npm run version && npm run push "
   },
   "repository": {
     "type": "git",

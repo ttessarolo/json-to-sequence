@@ -96,12 +96,14 @@ export default class JSONSequencer {
     this.skipFields = skipFields;
     this.fillNA = fillNA;
     this.uniformTokenLength = uniformTokenLength;
-    this.combinations = new Set();
     this.NA = NA;
     this.keyAlphabet = keyAlphabet;
     this.valuesAlphabet = valuesAlphabet;
+
     this.verbose = verbose;
     this.filterData = filterData;
+
+    this.combinations = new Set();
 
     if (path) this.loadModel(path);
   }
@@ -260,7 +262,13 @@ export default class JSONSequencer {
         for (const token of chunkString(data, tokenLength)) {
           const [key, value] = getKeyValue(token, keyLength);
           const k = this.model.inverters[key];
-          results.push([k.key, k.values.get(value)]);
+
+          if (k) {
+            const v = k.values.get(value);
+            if (v) {
+              results.push([k.key, k.values.get(value)]);
+            } else throw new Error(`Value ${v} is not in the Model. Maybe you should refit it.`);
+          } else throw new Error(`Key ${k} is not in the Model. Maybe you should refit it.`);
         }
       }
     } else throw new Error("No Valid Model Loaded");
@@ -281,6 +289,9 @@ export default class JSONSequencer {
       model.skipFields = this.skipFields;
       model.fillNA = this.fillNA;
       model.uniformTokenLength = this.uniformTokenLength;
+      model.NA = this.NA;
+      model.keyAlphabet = this.keyAlphabet;
+      model.valuesAlphabet = this.valuesAlphabet;
       model.creationDate = Date.now();
 
       Object.keys(model.translators).forEach((key) => {
@@ -311,6 +322,9 @@ export default class JSONSequencer {
     this.skipFields = model.skipFields;
     this.fillNA = model.fillNA;
     this.uniformTokenLength = model.uniformTokenLength;
+    this.NA = model.NA;
+    this.keyAlphabet = model.keyAlphabet;
+    this.valuesAlphabet = model.valuesAlphabet;
 
     if (this.verbose) console.log(model);
 
