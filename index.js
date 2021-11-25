@@ -65,13 +65,25 @@ function addToAlphabets(alphabet, seq) {
   });
 }
 
+function chunkString(str, length) {
+  return str.match(new RegExp(".{1," + length + "}", "g"));
+}
+
+function getKeyValue(str, keyLength) {
+  const arr = str.split("");
+  const key = arr.slice(0, keyLength).join("");
+  const value = arr.slice(keyLength).join("");
+
+  return [key, value];
+}
+
 export default class JSONSequencer {
   constructor({
     model = {},
     path,
     fields = [],
     skipFields = [],
-    filterValue = () => false,
+    filterData = () => false,
     fillNA = false,
     uniformTokenLength = false,
     NA = "X",
@@ -89,7 +101,7 @@ export default class JSONSequencer {
     this.keyAlphabet = keyAlphabet;
     this.valuesAlphabet = valuesAlphabet;
     this.verbose = verbose;
-    this.filterValue = filterValue;
+    this.filterData = filterData;
 
     if (path) this.loadModel(path);
   }
@@ -104,6 +116,7 @@ export default class JSONSequencer {
       keysSize: 0,
       valuesSize: 0,
       translators: {},
+      inverters: {},
       alphabets: new Set(),
     };
 
@@ -146,15 +159,18 @@ export default class JSONSequencer {
 
       let v = 0;
       const valuesMap = new Map();
+      const inverseValuesMap = new Map();
       for (const valore of [...value]) {
-        if (this.filterValue(key, valore)) continue;
+        if (this.filterData(key, valore)) continue;
 
         df.valuesSize += 1;
         valuesMap.set(valore, valuesAlpha[v]);
+        inverseValuesMap.set(valuesAlpha[v], valore);
         v = v + 1;
       }
 
       df.translators[key] = { key: keysAlpha[k], values: valuesMap };
+      df.inverters[keysAlpha[k]] = { key, values: inverseValuesMap };
       k = k + 1;
     }
 
@@ -172,7 +188,6 @@ export default class JSONSequencer {
       df.tokenLength = keyLength + valueLength;
     }
 
-    df.creationDate = Date.now();
     delete df.keys;
 
     this.model = df;
@@ -201,7 +216,7 @@ export default class JSONSequencer {
           if (value) {
             const values = Array.isArray(value) ? value : [value];
             for (const valore of values) {
-              if (this.filterValue(key, valore)) continue;
+              if (this.filterData(key, valore)) continue;
 
               const translated = translate.values.get(valore);
               if (translated) {
@@ -228,6 +243,31 @@ export default class JSONSequencer {
     return multiple ? results : results[0];
   }
 
+  invert(dataset) {
+    if (!this.model.uniformTokenLength) {
+      throw new Error("Invert is possible only on uniformTokenLength");
+    }
+
+    const results = [];
+    const multiple = Array.isArray(dataset);
+    if (!multiple) dataset = [dataset];
+
+    const tokenLength = this.model.tokenLength;
+    const keyLength = this.model.keyLength;
+
+    if (keyLength && tokenLength) {
+      for (const data of dataset) {
+        for (const token of chunkString(data, tokenLength)) {
+          const [key, value] = getKeyValue(token, keyLength);
+          const k = this.model.inverters[key];
+          results.push([k.key, k.values.get(value)]);
+        }
+      }
+    } else throw new Error("No Valid Model Loaded");
+
+    return multiple ? results : results[0];
+  }
+
   getAlphabets() {
     if (this.model && this.model.alphabets) {
       return this.model.alphabets;
@@ -237,8 +277,18 @@ export default class JSONSequencer {
   saveModel(path) {
     if (this.model) {
       const model = clone.default(this.model);
+      model.fields = this.fields;
+      model.skipFields = this.skipFields;
+      model.fillNA = this.fillNA;
+      model.uniformTokenLength = this.uniformTokenLength;
+      model.creationDate = Date.now();
+
       Object.keys(model.translators).forEach((key) => {
         model.translators[key].values = [...model.translators[key].values];
+      });
+
+      Object.keys(model.inverters).forEach((key) => {
+        model.inverters[key].values = [...model.inverters[key].values];
       });
 
       fs.writeFileSync(path, JSON.stringify(model, null, 1));
@@ -248,9 +298,19 @@ export default class JSONSequencer {
   loadModel(path) {
     const raw = fs.readFileSync(path);
     const model = JSON.parse(raw);
+
     Object.keys(model.translators).forEach((key) => {
       model.translators[key].values = new Map(model.translators[key].values);
     });
+
+    Object.keys(model.inverters).forEach((key) => {
+      model.inverters[key].values = new Map(model.inverters[key].values);
+    });
+
+    this.fields = model.fields;
+    this.skipFields = model.skipFields;
+    this.fillNA = model.fillNA;
+    this.uniformTokenLength = model.uniformTokenLength;
 
     if (this.verbose) console.log(model);
 

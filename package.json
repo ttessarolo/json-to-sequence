@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Generate a Sequence from JSON Object",
   "main": "index.js",
+  "type": "module",
   "scripts": {
     "start": "index.js",
     "prettier": "prettier --write index.js lib",
@@ -13,7 +14,8 @@
     "commit": "git add . && git-cz",
     "version": "standard-version",
     "push": "git push --follow-tags",
-    "release": "npm run commit && npm run version && npm run push"
+    "publish": "npm publish",
+    "release": "npm run commit && npm run version && npm run push && npm run publish"
   },
   "repository": {
     "type": "git",
