@@ -2,8 +2,6 @@
 import * as percom from "percom";
 import * as clone from "clone";
 import * as fs from "fs";
-import * as serialize from "serialize-javascript";
-import { gzipSync, unzipSync } from "zlib";
 
 const alphabet = [
   "A",
@@ -83,7 +81,6 @@ export default class JSONSequencer {
   constructor({
     model = {},
     path,
-    name = `model_${Date.now()}`,
     fields = [],
     skipFields = [],
     fillNA = false,
@@ -97,7 +94,6 @@ export default class JSONSequencer {
     translateKey = (k) => k,
     translateValue = (v) => v,
   }) {
-    this.name = name;
     this.model = model;
     this.fields = fields;
     this.skipFields = skipFields;
@@ -133,9 +129,8 @@ export default class JSONSequencer {
 
     data = Array.isArray(data) ? data : [data];
     for (const row of data) {
-      for (let key of this.fields) {
+      for (let [key, value] of Object.entries(row)) {
         if (!this.skipFields.includes(key)) {
-          let value = row[key];
           key = this.translateKey(key);
           if (!df.keys.has(key)) df.keys.set(key, new Set());
           df.keysSize += 1;
@@ -212,7 +207,6 @@ export default class JSONSequencer {
 
   transform(dataset) {
     const results = [];
-    const errors = [];
     const multiple = Array.isArray(dataset);
     if (!multiple) dataset = [dataset];
 
@@ -220,28 +214,26 @@ export default class JSONSequencer {
       const d = [];
       for (let key of this.fields) {
         if (!this.skipFields.includes(key)) {
-          key = this.translateKey(key);
           const translate = this.model.translators[key];
 
           if (!translate) {
-            errors.push(`Key ${key} is not in the Model. Maybe you should refit it.`);
-            continue;
+            throw new Error(`Key ${key} is not in the Model. Maybe you should refit it.`);
           }
 
           const value = data[key];
 
           if (value) {
             const values = Array.isArray(value) ? value : [value];
-            for (let valore of values) {
+            for (const valore of values) {
               if (this.filterData(key, valore)) continue;
 
-              valore = this.translateValue(valore);
               const translated = translate.values.get(valore);
               if (translated) {
                 const seq = `${translate.key}${translate.values.get(valore)}`;
                 d.push(seq);
                 this.combinations.add(seq);
-              } else errors.push(`Value ${valore} is not in the Model. Maybe you should refit it.`);
+              } else
+                throw new Error(`Value ${valore} is not in the Model. Maybe you should refit it.`);
             }
           } else if (this.fillNA) {
             if (this.uniformTokenLength)
@@ -257,7 +249,7 @@ export default class JSONSequencer {
       results.push(seq);
     }
 
-    return [multiple ? results : results[0], errors];
+    return multiple ? results : results[0];
   }
 
   invert(dataset) {
@@ -265,7 +257,6 @@ export default class JSONSequencer {
       throw new Error("Invert is possible only on uniformTokenLength");
     }
 
-    const errors = [];
     const results = [];
     const multiple = Array.isArray(dataset);
     if (!multiple) dataset = [dataset];
@@ -283,13 +274,13 @@ export default class JSONSequencer {
             const v = k.values.get(value);
             if (v) {
               results.push([k.key, k.values.get(value)]);
-            } else errors.push(`Value ${v} is not in the Model. Maybe you should refit it.`);
-          } else errors.push(`Key ${k} is not in the Model. Maybe you should refit it.`);
+            } else throw new Error(`Value ${v} is not in the Model. Maybe you should refit it.`);
+          } else throw new Error(`Key ${k} is not in the Model. Maybe you should refit it.`);
         }
       }
-    } else errors.push("No Valid Model Loaded");
+    } else throw new Error("No Valid Model Loaded");
 
-    return [multiple ? results : results[0], errors];
+    return multiple ? results : results[0];
   }
 
   getAlphabets() {
@@ -298,10 +289,9 @@ export default class JSONSequencer {
     }
   }
 
-  saveModel({ dir, generateJSONCopy = false }) {
+  saveModel(path) {
     if (this.model) {
       const model = clone.default(this.model);
-      model.name = this.name;
       model.fields = this.fields;
       model.skipFields = this.skipFields;
       model.fillNA = this.fillNA;
@@ -309,35 +299,32 @@ export default class JSONSequencer {
       model.NA = this.NA;
       model.keyAlphabet = this.keyAlphabet;
       model.valuesAlphabet = this.valuesAlphabet;
-      model.filterData = this.filterData;
-      model.translateKey = this.translateKey;
-      model.translateValue = this.translateValue;
       model.creationDate = Date.now();
 
-      if (!dir.endsWith("/")) dir = `${dir}/`;
-      const serialized = serialize.default(model);
+      Object.keys(model.translators).forEach((key) => {
+        model.translators[key].values = [...model.translators[key].values];
+      });
 
-      const compressed = gzipSync(Buffer.from(serialized));
-      fs.writeFileSync(`${dir}${model.name}.j2s`, compressed);
+      Object.keys(model.inverters).forEach((key) => {
+        model.inverters[key].values = [...model.inverters[key].values];
+      });
 
-      if (generateJSONCopy) {
-        Object.keys(model.translators).forEach((key) => {
-          model.translators[key].values = [...model.translators[key].values];
-        });
-        Object.keys(model.inverters).forEach((key) => {
-          model.inverters[key].values = [...model.inverters[key].values];
-        });
-        fs.writeFileSync(`${dir}${model.name}.json`, JSON.stringify(model, null, 1));
-      }
+      fs.writeFileSync(path, JSON.stringify(model, null, 1));
     } else throw new Error("No Model To Save");
   }
 
   loadModel(path) {
     const raw = fs.readFileSync(path);
-    const decompressed = unzipSync(raw);
-    const model = eval("(" + decompressed + ")");
+    const model = JSON.parse(raw);
 
-    this.name = model.name;
+    Object.keys(model.translators).forEach((key) => {
+      model.translators[key].values = new Map(model.translators[key].values);
+    });
+
+    Object.keys(model.inverters).forEach((key) => {
+      model.inverters[key].values = new Map(model.inverters[key].values);
+    });
+
     this.fields = model.fields;
     this.skipFields = model.skipFields;
     this.fillNA = model.fillNA;
@@ -345,9 +332,6 @@ export default class JSONSequencer {
     this.NA = model.NA;
     this.keyAlphabet = model.keyAlphabet;
     this.valuesAlphabet = model.valuesAlphabet;
-    this.filterData = model.filterData;
-    this.translateKey = model.translateKey;
-    this.translateValue = model.translateValue;
 
     if (this.verbose) console.log(model);
 
