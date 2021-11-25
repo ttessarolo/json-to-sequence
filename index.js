@@ -95,7 +95,7 @@ export default class JSONSequencer {
 
     filterData = () => false,
     translateKey = (k) => k,
-    translateValue = (v) => v,
+    translateValue = (k, v) => v,
   }) {
     this.name = name;
     this.model = model;
@@ -136,14 +136,16 @@ export default class JSONSequencer {
       for (let key of this.fields) {
         if (!this.skipFields.includes(key)) {
           let value = row[key];
-          key = this.translateKey(key);
-          if (!df.keys.has(key)) df.keys.set(key, new Set());
-          df.keysSize += 1;
+          if (value) {
+            key = this.translateKey(key);
+            if (!df.keys.has(key)) df.keys.set(key, new Set());
+            df.keysSize += 1;
 
-          const values = Array.isArray(value) ? value : [value];
-          for (let valore of values) {
-            valore = this.translateValue(valore);
-            df.keys.get(key).add(valore);
+            const values = Array.isArray(value) ? value : [value];
+            for (let valore of values) {
+              valore = this.translateValue(key, valore);
+              df.keys.get(key).add(valore);
+            }
           }
         }
       }
@@ -220,6 +222,8 @@ export default class JSONSequencer {
       const d = [];
       for (let key of this.fields) {
         if (!this.skipFields.includes(key)) {
+          const value = data[key];
+
           key = this.translateKey(key);
           const translate = this.model.translators[key];
 
@@ -228,14 +232,12 @@ export default class JSONSequencer {
             continue;
           }
 
-          const value = data[key];
-
           if (value) {
             const values = Array.isArray(value) ? value : [value];
             for (let valore of values) {
               if (this.filterData(key, valore)) continue;
 
-              valore = this.translateValue(valore);
+              valore = this.translateValue(key, valore);
               const translated = translate.values.get(valore);
               if (translated) {
                 const seq = `${translate.key}${translate.values.get(valore)}`;
