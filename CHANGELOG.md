@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.3.1](https://bitbucket.org/ttessarolo/json-to-sequence/branches/compare/v1.3.0%0Dv1.3.1) (2021-11-26)
+
+
+### Others
+
+* allign Versions ([805e538](https://github.com/ttessarolo/json-to-sequence/commits/805e538beafd79eeff9c0a5c8ebc0cb3507b6916))
+
 ## [1.3.0](https://bitbucket.org/ttessarolo/json-to-sequence/branches/compare/v1.2.1%0Dv1.3.0) (2021-11-26)
 
 
