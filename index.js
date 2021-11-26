@@ -35,7 +35,9 @@ const alphabet = [
 
 const numbers = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"];
 
-function shuffleArray(array) {
+function shuffleArray(array, shuffle = true) {
+  if (!shuffle) return array;
+
   for (let i = array.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     const temp = array[i];
@@ -53,12 +55,15 @@ function getLength(alphabet, n) {
   }
 }
 
-function getKeys(alphabet, n) {
+function getKeys(alphabet, n, shuffle = true) {
   const k = getLength(alphabet, n);
   const alphabets = alphabet.slice(0, k);
   const permutations = percom.per(alphabets, k);
 
-  return shuffleArray(permutations.map((p) => p.join("")));
+  return shuffleArray(
+    permutations.map((p) => p.join("")),
+    shuffle
+  );
 }
 
 function addToAlphabets(alphabet, seq) {
@@ -67,7 +72,8 @@ function addToAlphabets(alphabet, seq) {
   });
 }
 
-function chunkString(str, length) {
+function chunkString(str, length, tokenSeparator) {
+  if (tokenSeparator) return str.split(tokenSeparator);
   return str.match(new RegExp(".{1," + length + "}", "g"));
 }
 
@@ -81,7 +87,7 @@ function getKeyValue(str, keyLength) {
 
 export default class JSONSequencer {
   constructor({
-    model = {},
+    model,
     path,
     name = `model_${Date.now()}`,
     fields = [],
@@ -97,31 +103,35 @@ export default class JSONSequencer {
     translateKey = (k) => k,
     translateValue = (k, v) => v,
   }) {
-    this.name = name;
-    this.model = model;
-    this.fields = fields;
-    this.skipFields = skipFields;
-    this.fillNA = fillNA;
-    this.uniformTokenLength = uniformTokenLength;
-    this.NA = NA;
-    this.keyAlphabet = keyAlphabet;
-    this.valuesAlphabet = valuesAlphabet;
+    if (model) {
+      this.extractDataFromModel(model);
+      this.model = model;
+    } else if (path) {
+      this.loadModel(path);
+    } else {
+      this.fields = fields;
+      this.skipFields = skipFields;
+      this.fillNA = fillNA;
+      this.uniformTokenLength = uniformTokenLength;
+      this.NA = NA;
+      this.keyAlphabet = keyAlphabet;
+      this.valuesAlphabet = valuesAlphabet;
+    }
+
+    if (!this.name) this.name = name;
+    if (!this.filterData) this.filterData = filterData;
+    if (!this.translateKey) this.translateKey = translateKey;
+    if (!this.translateValue) this.translateValue = translateValue;
 
     this.verbose = verbose;
-    this.filterData = filterData;
-    this.translateKey = translateKey;
-    this.translateValue = translateValue;
-
     this.combinations = new Set();
-
-    if (path) this.loadModel(path);
   }
 
   getCombinations() {
     return this.combinations;
   }
 
-  fit({ data }) {
+  fit({ data, shuffleKeyAlphabets = true }) {
     const df = {
       keys: new Map(),
       keysSize: 0,
@@ -151,7 +161,7 @@ export default class JSONSequencer {
       }
     }
 
-    const keysAlpha = getKeys(this.keyAlphabet, df.keys.size);
+    const keysAlpha = getKeys(this.keyAlphabet, df.keys.size, shuffleKeyAlphabets);
     addToAlphabets(df.alphabets, keysAlpha);
 
     let keyLength = keysAlpha[0].length;
@@ -164,11 +174,13 @@ export default class JSONSequencer {
       for (const value of df.keys.values()) {
         if (value.size > maxValueLength) maxValueLength = value.size;
       }
-      fixedValuesAlpha = getKeys(this.valuesAlphabet, maxValueLength);
+      fixedValuesAlpha = getKeys(this.valuesAlphabet, maxValueLength, shuffleKeyAlphabets);
     }
 
     for (const [key, value] of df.keys.entries()) {
-      const valuesAlpha = fixedValuesAlpha ? shuffleArray(fixedValuesAlpha) : getKeys(value.size);
+      const valuesAlpha = fixedValuesAlpha
+        ? shuffleArray(fixedValuesAlpha, shuffleKeyAlphabets)
+        : getKeys(this.valuesAlphabet, value.size, shuffleKeyAlphabets);
 
       valueLength = valuesAlpha[0].length;
       addToAlphabets(df.alphabets, valuesAlpha);
@@ -212,17 +224,17 @@ export default class JSONSequencer {
     return df;
   }
 
-  transform(dataset) {
+  transform({ data, tokenSeparator = "" }) {
     const results = [];
     const errors = [];
-    const multiple = Array.isArray(dataset);
-    if (!multiple) dataset = [dataset];
+    const multiple = Array.isArray(data);
+    if (!multiple) data = [data];
 
-    for (const data of dataset) {
+    for (const row of data) {
       const d = [];
       for (let key of this.fields) {
         if (!this.skipFields.includes(key)) {
-          const value = data[key];
+          const value = row[key];
 
           key = this.translateKey(key);
           const translate = this.model.translators[key];
@@ -253,7 +265,7 @@ export default class JSONSequencer {
         }
       }
 
-      const seq = d.join("");
+      const seq = d.join(tokenSeparator);
       if (this.verbose) console.log(seq.length, seq);
 
       results.push(seq);
@@ -262,22 +274,22 @@ export default class JSONSequencer {
     return [multiple ? results : results[0], errors];
   }
 
-  invert(dataset) {
-    if (!this.model.uniformTokenLength) {
-      throw new Error("Invert is possible only on uniformTokenLength");
+  invert({ data, tokenSeparator = "" }) {
+    if (!this.model.uniformTokenLength && !tokenSeparator) {
+      throw "The Model has not fixed token length. You Should specify a token separator.";
     }
 
     const errors = [];
     const results = [];
-    const multiple = Array.isArray(dataset);
-    if (!multiple) dataset = [dataset];
+    const multiple = Array.isArray(data);
+    if (!multiple) data = [data];
 
     const tokenLength = this.model.tokenLength;
     const keyLength = this.model.keyLength;
 
-    if (keyLength && tokenLength) {
-      for (const data of dataset) {
-        for (const token of chunkString(data, tokenLength)) {
+    if (tokenLength || tokenSeparator) {
+      for (const row of data) {
+        for (const token of chunkString(row, tokenLength, tokenSeparator)) {
           const [key, value] = getKeyValue(token, keyLength);
           const k = this.model.inverters[key];
 
@@ -298,6 +310,20 @@ export default class JSONSequencer {
     if (this.model && this.model.alphabets) {
       return this.model.alphabets;
     }
+  }
+
+  extractDataFromModel(model) {
+    this.name = model.name;
+    this.fields = model.fields;
+    this.skipFields = model.skipFields;
+    this.fillNA = model.fillNA;
+    this.uniformTokenLength = model.uniformTokenLength;
+    this.NA = model.NA;
+    this.keyAlphabet = model.keyAlphabet;
+    this.valuesAlphabet = model.valuesAlphabet;
+    this.filterData = model.filterData;
+    this.translateKey = model.translateKey;
+    this.translateValue = model.translateValue;
   }
 
   saveModel({ dir, generateJSONCopy = false }) {
@@ -339,17 +365,7 @@ export default class JSONSequencer {
     const decompressed = unzipSync(raw);
     const model = eval("(" + decompressed + ")");
 
-    this.name = model.name;
-    this.fields = model.fields;
-    this.skipFields = model.skipFields;
-    this.fillNA = model.fillNA;
-    this.uniformTokenLength = model.uniformTokenLength;
-    this.NA = model.NA;
-    this.keyAlphabet = model.keyAlphabet;
-    this.valuesAlphabet = model.valuesAlphabet;
-    this.filterData = model.filterData;
-    this.translateKey = model.translateKey;
-    this.translateValue = model.translateValue;
+    this.extractDataFromModel(model);
 
     if (this.verbose) console.log(model);
 
