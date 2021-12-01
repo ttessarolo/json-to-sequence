@@ -93,7 +93,7 @@ export default class JSONSequencer {
     fields = [],
     skipFields = [],
     fillNA = false,
-    uniformTokenLength = false,
+    uniformTokenLength = true,
     NA = "X",
     keyAlphabet = alphabet,
     valuesAlphabet = numbers,
@@ -131,9 +131,11 @@ export default class JSONSequencer {
     return this.combinations;
   }
 
-  fit({ data, shuffleKeyAlphabets = true }) {
+  fit({ data, shuffleValueAlphabets = true }) {
+    const _keys = new Map();
+    const _values = new Set();
+
     const df = {
-      keys: new Map(),
       keysSize: 0,
       valuesSize: 0,
       translators: {},
@@ -148,58 +150,50 @@ export default class JSONSequencer {
           let value = row[key];
           if (value) {
             key = this.translateKey(key);
-            if (!df.keys.has(key)) df.keys.set(key, new Set());
+            if (!_keys.has(key)) _keys.set(key, new Set());
             df.keysSize += 1;
 
             const values = Array.isArray(value) ? value : [value];
             for (let valore of values) {
               valore = this.translateValue(key, valore);
-              df.keys.get(key).add(valore);
+              _values.add(valore);
+              _keys.get(key).add(valore);
             }
           }
         }
       }
     }
 
-    const keysAlpha = getKeys(this.keyAlphabet, df.keys.size, shuffleKeyAlphabets);
+    const keysAlpha = getKeys(this.keyAlphabet, _keys.size);
     addToAlphabets(df.alphabets, keysAlpha);
 
     let keyLength = keysAlpha[0].length;
     let valueLength = 0;
-    let k = 0;
     let fixedValuesAlpha;
 
     if (this.uniformTokenLength) {
-      let maxValueLength = 0;
-      for (const value of df.keys.values()) {
-        if (value.size > maxValueLength) maxValueLength = value.size;
-      }
-      fixedValuesAlpha = getKeys(this.valuesAlphabet, maxValueLength, shuffleKeyAlphabets);
+      fixedValuesAlpha = getKeys(this.valuesAlphabet, _values.size, shuffleValueAlphabets);
     }
 
-    for (const [key, value] of df.keys.entries()) {
-      const valuesAlpha = fixedValuesAlpha
-        ? shuffleArray(fixedValuesAlpha, shuffleKeyAlphabets)
-        : getKeys(this.valuesAlphabet, value.size, shuffleKeyAlphabets);
+    for (const [key, value] of _keys.entries()) {
+      const valuesAlpha =
+        fixedValuesAlpha || getKeys(this.valuesAlphabet, value.size, shuffleValueAlphabets);
 
       valueLength = valuesAlpha[0].length;
       addToAlphabets(df.alphabets, valuesAlpha);
 
-      let v = 0;
       const valuesMap = new Map();
       const inverseValuesMap = new Map();
       for (const valore of [...value]) {
         if (this.filterData(key, valore)) continue;
-
-        df.valuesSize += 1;
-        valuesMap.set(valore, valuesAlpha[v]);
-        inverseValuesMap.set(valuesAlpha[v], valore);
-        v = v + 1;
+        const val = valuesAlpha.splice(0, 1)[0];
+        valuesMap.set(valore, val);
+        inverseValuesMap.set(val, valore);
       }
 
-      df.translators[key] = { key: keysAlpha[k], values: valuesMap };
-      df.inverters[keysAlpha[k]] = { key, values: inverseValuesMap };
-      k = k + 1;
+      const chiave = keysAlpha.splice(0, 1)[0];
+      df.translators[key] = { key: chiave, values: valuesMap };
+      df.inverters[chiave] = { key, values: inverseValuesMap };
     }
 
     df.alphabets = [...df.alphabets];
@@ -216,8 +210,7 @@ export default class JSONSequencer {
       df.tokenLength = keyLength + valueLength;
     }
 
-    delete df.keys;
-
+    df.valuesSize = _values.size;
     this.model = df;
 
     if (this.verbose) console.log(df);
