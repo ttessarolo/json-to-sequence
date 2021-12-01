@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.4.0](https://bitbucket.org/ttessarolo/json-to-sequence/branches/compare/v1.3.1%0Dv1.4.0) (2021-12-01)
+
+
+### Features
+
+* ensure Unique Values ([644c3ab](https://github.com/ttessarolo/json-to-sequence/commits/644c3abdad0dd05ab6872087ff99640393a022cd))
+
 ### [1.3.1](https://bitbucket.org/ttessarolo/json-to-sequence/branches/compare/v1.3.0%0Dv1.3.1) (2021-11-26)
 
 
