@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.4.1](https://bitbucket.org/ttessarolo/json-to-sequence/branches/compare/v1.4.0%0Dv1.4.1) (2021-12-01)
+
+
+### Others
+
+* tokenSeparator is now in the Model ([933cb36](https://github.com/ttessarolo/json-to-sequence/commits/933cb361d0c36142367eda3c2722d5da858da409))
+
 ## [1.4.0](https://bitbucket.org/ttessarolo/json-to-sequence/branches/compare/v1.3.1%0Dv1.4.0) (2021-12-01)
 
 
