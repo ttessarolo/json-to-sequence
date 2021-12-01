@@ -95,6 +95,7 @@ export default class JSONSequencer {
     fillNA = false,
     uniformTokenLength = true,
     NA = "X",
+    tokenSeparator = "",
     keyAlphabet = alphabet,
     valuesAlphabet = numbers,
     verbose = false,
@@ -116,6 +117,7 @@ export default class JSONSequencer {
       this.NA = NA;
       this.keyAlphabet = keyAlphabet;
       this.valuesAlphabet = valuesAlphabet;
+      this.tokenSeparator = tokenSeparator;
     }
 
     if (!this.name) this.name = name;
@@ -186,9 +188,16 @@ export default class JSONSequencer {
       const inverseValuesMap = new Map();
       for (const valore of [...value]) {
         if (this.filterData(key, valore)) continue;
-        const val = valuesAlpha.splice(0, 1)[0];
-        valuesMap.set(valore, val);
-        inverseValuesMap.set(val, valore);
+        const valueKey = valuesAlpha.splice(0, 1)[0];
+        valuesMap.set(valore, valueKey);
+        inverseValuesMap.set(valueKey, valore);
+      }
+
+      if (this.fillNA) {
+        const missing = "Missing Value From Source";
+        const valueKey = this.uniformTokenLength ? this.NA.repeat(valueLength) : this.NA;
+        valuesMap.set(missing, valueKey);
+        inverseValuesMap.set(valueKey, missing);
       }
 
       const chiave = keysAlpha.splice(0, 1)[0];
@@ -200,6 +209,9 @@ export default class JSONSequencer {
 
     if (this.fillNA) {
       df.alphabets.unshift(this.NA);
+    }
+    if (this.tokenSeparator) {
+      df.alphabets.unshift(this.tokenSeparator);
     }
 
     df.alphabets = df.alphabets.sort();
@@ -217,7 +229,7 @@ export default class JSONSequencer {
     return df;
   }
 
-  transform({ data, tokenSeparator = "" }) {
+  transform({ data }) {
     const results = [];
     const errors = [];
     const multiple = Array.isArray(data);
@@ -258,7 +270,7 @@ export default class JSONSequencer {
         }
       }
 
-      const seq = d.join(tokenSeparator);
+      const seq = d.join(this.tokenSeparator);
       if (this.verbose) console.log(seq.length, seq);
 
       results.push(seq);
@@ -267,7 +279,7 @@ export default class JSONSequencer {
     return [multiple ? results : results[0], errors];
   }
 
-  invert({ data, tokenSeparator = "" }) {
+  invert({ data }) {
     if (!this.model.uniformTokenLength && !tokenSeparator) {
       throw "The Model has not fixed token length. You Should specify a token separator.";
     }
@@ -280,9 +292,9 @@ export default class JSONSequencer {
     const tokenLength = this.model.tokenLength;
     const keyLength = this.model.keyLength;
 
-    if (tokenLength || tokenSeparator) {
+    if (tokenLength || this.tokenSeparator) {
       for (const row of data) {
-        for (const token of chunkString(row, tokenLength, tokenSeparator)) {
+        for (const token of chunkString(row, tokenLength, this.tokenSeparator)) {
           const [key, value] = getKeyValue(token, keyLength);
           const k = this.model.inverters[key];
 
@@ -290,8 +302,11 @@ export default class JSONSequencer {
             const v = k.values.get(value);
             if (v) {
               results.push([k.key, k.values.get(value)]);
-            } else errors.push(`Value ${v} is not in the Model. Maybe you should refit it.`);
-          } else errors.push(`Key ${k} is not in the Model. Maybe you should refit it.`);
+            } else
+              errors.push(
+                `Value ${value} for Key ${key} is not in the Model. Maybe you should refit it.`
+              );
+          } else errors.push(`Key ${key} is not in the Model. Maybe you should refit it.`);
         }
       }
     } else errors.push("No Valid Model Loaded");
@@ -317,6 +332,7 @@ export default class JSONSequencer {
     this.filterData = model.filterData;
     this.translateKey = model.translateKey;
     this.translateValue = model.translateValue;
+    this.tokenSeparator = model.tokenSeparator;
   }
 
   saveModel({ dir, generateJSONCopy = false }) {
@@ -328,6 +344,7 @@ export default class JSONSequencer {
       model.fillNA = this.fillNA;
       model.uniformTokenLength = this.uniformTokenLength;
       model.NA = this.NA;
+      model.tokenSeparator = this.tokenSeparator;
       model.keyAlphabet = this.keyAlphabet;
       model.valuesAlphabet = this.valuesAlphabet;
       model.filterData = this.filterData;
