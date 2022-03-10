@@ -3,7 +3,9 @@ import * as percom from "percom";
 import * as clone from "clone";
 import * as fs from "fs";
 import * as serialize from "serialize-javascript";
+import get from "lodash.get";
 import { gzipSync, unzipSync } from "zlib";
+import Events from "events";
 
 const alphabet = [
   "A",
@@ -34,6 +36,10 @@ const alphabet = [
 ];
 
 const numbers = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"];
+
+function checkStream(obj) {
+  return obj != null && typeof obj.pipe === "function";
+}
 
 function shuffleArray(array, shuffle = true) {
   if (!shuffle) return array;
@@ -85,7 +91,7 @@ function getKeyValue(str, keyLength) {
   return [key, value];
 }
 
-export default class JSONSequencer {
+export default class JSONSequencer extends Events {
   constructor({
     model,
     path,
@@ -93,9 +99,9 @@ export default class JSONSequencer {
     fields = [],
     skipFields = [],
     fillNA = false,
-    uniformTokenLength = true,
     NA = "X",
-    tokenSeparator = "",
+    uniformTokenLength = true,
+    tokenSeparator = " ",
     keyAlphabet = alphabet,
     valuesAlphabet = numbers,
     verbose = false,
@@ -104,6 +110,8 @@ export default class JSONSequencer {
     translateKey = (k) => k,
     translateValue = (k, v) => v,
   }) {
+    super();
+
     if (model) {
       this.extractDataFromModel(model);
       this.model = model;
@@ -133,7 +141,14 @@ export default class JSONSequencer {
     return this.combinations;
   }
 
-  fit({ data, shuffleValueAlphabets = true }) {
+  setParams({ skipFields, filterData, translateKey, translateValue }) {
+    if (skipFields) this.skipFields = skipFields;
+    if (filterData) this.filterData = filterData;
+    if (translateKey) this.translateKey = translateKey;
+    if (translateValue) this.translateValue;
+  }
+
+  async fit({ data, dataPath, shuffleValueAlphabets = true }) {
     const _keys = new Map();
     const _values = new Set();
 
@@ -145,8 +160,10 @@ export default class JSONSequencer {
       alphabets: new Set(),
     };
 
-    data = Array.isArray(data) ? data : [data];
-    for (const row of data) {
+    data = checkStream(data) || Array.isArray(data) ? data : [data];
+    for await (let row of data) {
+      if (dataPath) row = get(row, dataPath);
+
       for (let key of this.fields) {
         if (!this.skipFields.includes(key)) {
           let value = row[key];
@@ -226,17 +243,29 @@ export default class JSONSequencer {
     this.model = df;
 
     if (this.verbose) console.log(df);
+    this.emit("fitted", df);
     return df;
   }
 
-  transform({ data }) {
+  async transform({ data, dataPath, outputStream, cb }) {
+    if (outputStream && !checkStream(outputStream)) {
+      throw new Error("outputStream must be a writable stream");
+    }
+
+    if (cb && !typeof cb === "function") {
+      throw new Error("Callback must be a function");
+    }
+
     const results = [];
     const errors = [];
+    const isStream = checkStream(data);
     const multiple = Array.isArray(data);
-    if (!multiple) data = [data];
+    if (!multiple && !isStream) data = [data];
 
-    for (const row of data) {
+    for await (let chunk of data) {
+      const row = dataPath ? get(chunk, dataPath) : chunk;
       const d = [];
+
       for (let key of this.fields) {
         if (!this.skipFields.includes(key)) {
           const value = row[key];
@@ -257,10 +286,13 @@ export default class JSONSequencer {
               valore = this.translateValue(key, valore);
               const translated = translate.values.get(valore);
               if (translated) {
-                const seq = `${translate.key}${translate.values.get(valore)}`;
+                const seq = `${translate.key}${translated}`;
                 d.push(seq);
                 this.combinations.add(seq);
-              } else errors.push(`Value ${valore} is not in the Model. Maybe you should refit it.`);
+              } else
+                errors.push(
+                  `Value ${valore} for key ${key} is not in the Model. Maybe you should refit it.`
+                );
             }
           } else if (this.fillNA) {
             if (this.uniformTokenLength)
@@ -273,27 +305,51 @@ export default class JSONSequencer {
       const seq = d.join(this.tokenSeparator);
       if (this.verbose) console.log(seq.length, seq);
 
-      results.push(seq);
+      this.emit("transform_data", { sequence: seq, chunk });
+
+      if (outputStream) outputStream.write({ sequence: seq, chunk });
+      if (cb) cb(errors, seq, chunk);
+      if (!outputStream && !cb) results.push(seq);
     }
 
+    this.emit("transformed", results, errors);
     return [multiple ? results : results[0], errors];
   }
 
-  invert({ data }) {
+  fit_transform({ data, transformData, dataPath, outputStream, cb, shuffleValueAlphabets = true }) {
+    if (isStream(data) && !transformData)
+      throw new Error("Fit data is a stream you must provide transformData");
+
+    this.fit({ data, shuffleValueAlphabets, dataPath });
+    return this.transform({ data: transformData ?? data, outputStream, cb, dataPath });
+  }
+
+  async invert({ data, dataPath, outputStream, cb }) {
     if (!this.model.uniformTokenLength && !tokenSeparator) {
       throw "The Model has not fixed token length. You Should specify a token separator.";
     }
 
+    if (outputStream && !checkStream(outputStream)) {
+      throw new Error("outputStream must be a writable stream");
+    }
+
+    if (cb && !typeof cb === "function") {
+      throw new Error("Callback must be a function");
+    }
+
     const errors = [];
     const results = [];
+    const isStream = checkStream(data);
     const multiple = Array.isArray(data);
-    if (!multiple) data = [data];
+    if (!multiple && !isStream) data = [data];
 
     const tokenLength = this.model.tokenLength;
     const keyLength = this.model.keyLength;
 
     if (tokenLength || this.tokenSeparator) {
-      for (const row of data) {
+      for await (let row of data) {
+        if (dataPath) row = get(row, dataPath);
+
         for (const token of chunkString(row, tokenLength, this.tokenSeparator)) {
           const [key, value] = getKeyValue(token, keyLength);
           const k = this.model.inverters[key];
@@ -301,7 +357,13 @@ export default class JSONSequencer {
           if (k) {
             const v = k.values.get(value);
             if (v) {
-              results.push([k.key, k.values.get(value)]);
+              const ret = [k.key, k.values.get(value)];
+
+              this.emit("invert_data", ret);
+
+              if (outputStream) outputStream.write(ret);
+              if (cb) cb(errors, ret);
+              if (!outputStream && !cb) results.push(ret);
             } else
               errors.push(
                 `Value ${value} for Key ${key} is not in the Model. Maybe you should refit it.`
@@ -335,7 +397,7 @@ export default class JSONSequencer {
     this.tokenSeparator = model.tokenSeparator;
   }
 
-  saveModel({ dir, generateJSONCopy = false }) {
+  getModel() {
     if (this.model) {
       const model = clone.default(this.model);
       model.name = this.name;
@@ -352,21 +414,35 @@ export default class JSONSequencer {
       model.translateValue = this.translateValue;
       model.creationDate = Date.now();
 
-      if (!dir.endsWith("/")) dir = `${dir}/`;
       const serialized = serialize.default(model);
-
       const compressed = gzipSync(Buffer.from(serialized));
-      fs.writeFileSync(`${dir}${model.name}.j2s`, compressed);
 
+      Object.keys(model.translators).forEach((key) => {
+        model.translators[key].values = [...model.translators[key].values];
+      });
+      Object.keys(model.inverters).forEach((key) => {
+        model.inverters[key].values = [...model.inverters[key].values];
+      });
+
+      return [compressed, model];
+    }
+  }
+
+  saveModel({ dir, generateJSONCopy = false }) {
+    if (!dir) throw new Error("No Path to Save Model");
+
+    if (this.model) {
+      const [compressed, model] = this.getModel();
+
+      if (!dir.endsWith("/")) dir = `${dir}/`;
       if (generateJSONCopy) {
-        Object.keys(model.translators).forEach((key) => {
-          model.translators[key].values = [...model.translators[key].values];
-        });
-        Object.keys(model.inverters).forEach((key) => {
-          model.inverters[key].values = [...model.inverters[key].values];
-        });
         fs.writeFileSync(`${dir}${model.name}.json`, JSON.stringify(model, null, 1));
       }
+
+      fs.writeFileSync(`${dir}${model.name}.j2s`, compressed);
+
+      this.emit("model_save", compressed, model);
+      return [compressed, model];
     } else throw new Error("No Model To Save");
   }
 
@@ -380,5 +456,6 @@ export default class JSONSequencer {
     if (this.verbose) console.log(model);
 
     this.model = model;
+    this.emit("model_loaded", model);
   }
 }
