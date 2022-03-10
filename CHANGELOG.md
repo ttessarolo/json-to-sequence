@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.5.0](https://bitbucket.org/ttessarolo/json-to-sequence/branches/compare/v1.4.1%0Dv1.5.0) (2022-03-10)
+
+
+### Features
+
+* works with streams and return original content in transform ([fc133d6](https://github.com/ttessarolo/json-to-sequence/commits/fc133d69050b795de4011870b6b6339e90b10855))
+
 ### [1.4.1](https://bitbucket.org/ttessarolo/json-to-sequence/branches/compare/v1.4.0%0Dv1.4.1) (2021-12-01)
 
 
