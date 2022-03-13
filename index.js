@@ -61,7 +61,7 @@ function getLength(alphabet, n) {
   }
 }
 
-function getKeys(alphabet, n, shuffle = true) {
+function getKeys(alphabet, n, shuffle = false) {
   const k = getLength(alphabet, n);
   const alphabets = alphabet.slice(0, k);
   const permutations = percom.per(alphabets, k);
@@ -98,6 +98,8 @@ export default class JSONSequencer extends Events {
     name = `model_${Date.now()}`,
     fields = [],
     skipFields = [],
+    autoupdate = false,
+    autoupdateFactor = 1,
     fillNA = false,
     NA = "X",
     uniformTokenLength = true,
@@ -133,8 +135,12 @@ export default class JSONSequencer extends Events {
     if (!this.translateKey) this.translateKey = translateKey;
     if (!this.translateValue) this.translateValue = translateValue;
 
+    this.autoupdateFactor = this.autoupdateFactor ?? autoupdateFactor;
+    this.autoupdate = this.autoupdate ?? autoupdate;
     this.verbose = verbose;
     this.combinations = new Set();
+
+    if (this.autoupdate && this.autoupdateFactor <= 0) this.autoupdateFactor = 1;
   }
 
   getCombinations() {
@@ -148,7 +154,7 @@ export default class JSONSequencer extends Events {
     if (translateValue) this.translateValue;
   }
 
-  async fit({ data, dataPath, shuffleValueAlphabets = true }) {
+  async fit({ data, dataPath, shuffleValueAlphabets = false }) {
     const _keys = new Map();
     const _values = new Set();
 
@@ -164,13 +170,14 @@ export default class JSONSequencer extends Events {
     for await (let row of data) {
       if (dataPath) row = get(row, dataPath);
 
-      for (let key of this.fields) {
+      const campi = this.fields?.length > 0 || Object.keys(row);
+
+      for (let key of campi) {
         if (!this.skipFields.includes(key)) {
           let value = row[key];
           if (value) {
             key = this.translateKey(key);
             if (!_keys.has(key)) _keys.set(key, new Set());
-            df.keysSize += 1;
 
             const values = Array.isArray(value) ? value : [value];
             for (let valore of values) {
@@ -183,21 +190,26 @@ export default class JSONSequencer extends Events {
       }
     }
 
-    const keysAlpha = getKeys(this.keyAlphabet, _keys.size);
+    df.keysSize += _keys.size;
+    const keysAlpha = getKeys(
+      this.keyAlphabet,
+      _keys.size + (this.autoupdate ? this.autoupdateFactor : 0),
+      shuffleValueAlphabets
+    );
     addToAlphabets(df.alphabets, keysAlpha);
 
     let keyLength = keysAlpha[0].length;
     let valueLength = 0;
-    let fixedValuesAlpha;
-
-    if (this.uniformTokenLength) {
-      fixedValuesAlpha = getKeys(this.valuesAlphabet, _values.size, shuffleValueAlphabets);
-    }
+    let alfabetoValori = {};
+    let maxAlphaValueSize = 0;
 
     for (const [key, value] of _keys.entries()) {
-      const valuesAlpha =
-        fixedValuesAlpha || getKeys(this.valuesAlphabet, value.size, shuffleValueAlphabets);
+      const alphaValueSize =
+        (this.uniformTokenLength ? _values.size : value.size) +
+        (this.autoupdate ? this.autoupdateFactor : 0);
 
+      if (alphaValueSize > maxAlphaValueSize) maxAlphaValueSize = alphaValueSize;
+      const valuesAlpha = getKeys(this.valuesAlphabet, alphaValueSize, shuffleValueAlphabets);
       valueLength = valuesAlpha[0].length;
       addToAlphabets(df.alphabets, valuesAlpha);
 
@@ -209,6 +221,8 @@ export default class JSONSequencer extends Events {
         valuesMap.set(valore, valueKey);
         inverseValuesMap.set(valueKey, valore);
       }
+
+      alfabetoValori[key] = valuesAlpha;
 
       if (this.fillNA) {
         const missing = "Missing Value From Source";
@@ -239,15 +253,48 @@ export default class JSONSequencer extends Events {
       df.tokenLength = keyLength + valueLength;
     }
 
+    df.updater = { keys: keysAlpha, values: alfabetoValori };
+
     df.valuesSize = _values.size;
+    df.maxAlphaValueSize = maxAlphaValueSize;
     this.model = df;
 
     if (this.verbose) console.log(df);
-    this.emit("fitted", df);
-    return df;
+    this.emit("fitted");
   }
 
-  async transform({ data, dataPath, outputStream, cb }) {
+  _update(key, value, shuffleValueAlphabets) {
+    try {
+      // Missing Key
+      if (!value) {
+        const chiave = this.model.updater.keys.splice(0, 1)[0];
+        if (chiave) {
+          this.model.translators[key] = { key: chiave, values: new Map() };
+          this.model.inverters[chiave] = { key: key, values: new Map() };
+          this.model.updater.values[key] = getKeys(
+            this.valuesAlphabet,
+            this.model.maxAlphaValueSize,
+            shuffleValueAlphabets
+          );
+          this.model.keysSize += 1;
+
+          return this.model.translators[key];
+        }
+      }
+
+      const valore = this.model.updater.values[key].splice(0, 1)[0];
+
+      if (valore) {
+        const { key: chiave, values } = this.model.translators[key];
+        values.set(valore, key);
+        this.model.inverters[chiave].values.set(key, valore);
+        this.model.valuesSize += 1;
+        return valore;
+      }
+    } catch (error) {}
+  }
+
+  async transform({ data, dataPath, outputStream, cb, shuffleValueAlphabets = false }) {
     if (outputStream && !checkStream(outputStream)) {
       throw new Error("outputStream must be a writable stream");
     }
@@ -256,6 +303,7 @@ export default class JSONSequencer extends Events {
       throw new Error("Callback must be a function");
     }
 
+    let modelUpdated = false;
     const results = [];
     const errors = [];
     const isStream = checkStream(data);
@@ -264,18 +312,29 @@ export default class JSONSequencer extends Events {
 
     for await (let chunk of data) {
       const row = dataPath ? get(chunk, dataPath) : chunk;
+      const campi = this.fields?.length > 0 || Object.keys(row);
       const d = [];
 
-      for (let key of this.fields) {
+      for (let key of campi) {
         if (!this.skipFields.includes(key)) {
           const value = row[key];
 
           key = this.translateKey(key);
-          const translate = this.model.translators[key];
+          let translate = this.model.translators[key];
 
           if (!translate) {
-            errors.push(`Key ${key} is not in the Model. Maybe you should refit it.`);
-            continue;
+            if (this.autoupdate) {
+              translate = this._update(key, null, shuffleValueAlphabets);
+              if (!translate) {
+                errors.push(
+                  `Model Autoupdate is out of capacity. Not able to update for key ${key} `
+                );
+                continue;
+              } else modelUpdated = true;
+            } else {
+              errors.push(`Key ${key} is not in the Model. Maybe you should refit it.`);
+              continue;
+            }
           }
 
           if (value) {
@@ -284,14 +343,24 @@ export default class JSONSequencer extends Events {
               if (this.filterData(key, valore)) continue;
 
               valore = this.translateValue(key, valore);
-              const translated = translate.values.get(valore);
+              let translated = translate.values.get(valore);
+
+              if (!translated) {
+                if (this.autoupdate) {
+                  translated = this._update(key, valore, shuffleValueAlphabets);
+                  if (translated) modelUpdated = true;
+                }
+              }
+
               if (translated) {
                 const seq = `${translate.key}${translated}`;
                 d.push(seq);
                 this.combinations.add(seq);
               } else
                 errors.push(
-                  `Value ${valore} for key ${key} is not in the Model. Maybe you should refit it.`
+                  this.autoupdate
+                    ? `Model Autoupdate is out of capacity. Not able to update  ${valore} for key ${key}`
+                    : `Value ${valore} for key ${key} is not in the Model. Maybe you should refit it.`
                 );
             }
           } else if (this.fillNA) {
@@ -313,6 +382,8 @@ export default class JSONSequencer extends Events {
     }
 
     this.emit("transformed", results, errors);
+    if (modelUpdated) this.emit("model_update", this.getModel());
+
     return [multiple ? results : results[0], errors];
   }
 
@@ -395,6 +466,8 @@ export default class JSONSequencer extends Events {
     this.translateKey = model.translateKey;
     this.translateValue = model.translateValue;
     this.tokenSeparator = model.tokenSeparator;
+    this.autoupdate = model.autoupdate;
+    this.autoupdateFactor = model.autoupdateFactor;
   }
 
   getModel() {
@@ -412,6 +485,8 @@ export default class JSONSequencer extends Events {
       model.filterData = this.filterData;
       model.translateKey = this.translateKey;
       model.translateValue = this.translateValue;
+      model.autoupdate = this.autoupdate;
+      model.autoupdateFactor = this.autoupdateFactor;
       model.creationDate = Date.now();
 
       const serialized = serialize.default(model);
