@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.6.0](https://bitbucket.org/ttessarolo/json-to-sequence/branches/compare/v1.5.0%0Dv1.6.0) (2022-03-13)
+
+
+### Features
+
+* model Autoupdater with autoupdate factor ([6754314](https://github.com/ttessarolo/json-to-sequence/commits/6754314b80a2f81507433f820ecb0855914aeccc))
+
 ## [1.5.0](https://bitbucket.org/ttessarolo/json-to-sequence/branches/compare/v1.4.1%0Dv1.5.0) (2022-03-10)
 
 
