@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.6.3](https://bitbucket.org/ttessarolo/json-to-sequence/branches/compare/v1.6.2%0Dv1.6.3) (2022-03-13)
+
+
+### Bug Fixes
+
+* empty Fields on constructor ([3c1dd3f](https://github.com/ttessarolo/json-to-sequence/commits/3c1dd3f41c575987a9e22f37a71c9e892317a110))
+
 ### [1.6.2](https://bitbucket.org/ttessarolo/json-to-sequence/branches/compare/v1.6.1%0Dv1.6.2) (2022-03-13)
 
 

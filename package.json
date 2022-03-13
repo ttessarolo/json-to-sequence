@@ -1,6 +1,6 @@
 {
   "name": "json-to-sequence",
-  "version": "1.6.2",
+  "version": "1.6.3",
   "description": "Generate a Sequence from JSON Object",
   "main": "index.js",
   "type": "module",
