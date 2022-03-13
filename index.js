@@ -453,7 +453,10 @@ export default class JSONSequencer extends Events {
     }
   }
 
-  extractDataFromModel(model) {
+  extractDataFromModel(raw) {
+    const decompressed = unzipSync(raw);
+    const model = eval("(" + decompressed + ")");
+
     this.name = model.name;
     this.fields = model.fields;
     this.skipFields = model.skipFields;
@@ -468,6 +471,8 @@ export default class JSONSequencer extends Events {
     this.tokenSeparator = model.tokenSeparator;
     this.autoupdate = model.autoupdate;
     this.autoupdateFactor = model.autoupdateFactor;
+
+    return model;
   }
 
   getModel() {
@@ -522,15 +527,20 @@ export default class JSONSequencer extends Events {
   }
 
   loadModel(path) {
-    const raw = fs.readFileSync(path);
-    const decompressed = unzipSync(raw);
-    const model = eval("(" + decompressed + ")");
-
-    this.extractDataFromModel(model);
+    const model = this.extractDataFromModel(fs.readFileSync(path));
 
     if (this.verbose) console.log(model);
 
     this.model = model;
     this.emit("model_loaded", model);
+  }
+
+  setModel(raw) {
+    const model = this.extractDataFromModel(raw);
+
+    if (this.verbose) console.log(model);
+
+    this.model = model;
+    this.emit("model_set", model);
   }
 }
