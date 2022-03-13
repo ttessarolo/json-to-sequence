@@ -170,7 +170,7 @@ export default class JSONSequencer extends Events {
     for await (let row of data) {
       if (dataPath) row = get(row, dataPath);
 
-      const campi = this.fields?.length > 0 || Object.keys(row);
+      const campi = this.fields?.length > 0 ? this.fields : Object.keys(row);
 
       for (let key of campi) {
         if (!this.skipFields.includes(key)) {
@@ -312,7 +312,7 @@ export default class JSONSequencer extends Events {
 
     for await (let chunk of data) {
       const row = dataPath ? get(chunk, dataPath) : chunk;
-      const campi = this.fields?.length > 0 || Object.keys(row);
+      const campi = this.fields?.length > 0 ? this.fields : Object.keys(row);
       const d = [];
 
       for (let key of campi) {
