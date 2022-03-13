@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.6.2](https://bitbucket.org/ttessarolo/json-to-sequence/branches/compare/v1.6.1%0Dv1.6.2) (2022-03-13)
+
+
+### Others
+
+* default no fixed lenght for tokens ([7493337](https://github.com/ttessarolo/json-to-sequence/commits/7493337b16956e6d60ef78003d6982a4d3236fbc))
+
 ### [1.6.1](https://bitbucket.org/ttessarolo/json-to-sequence/branches/compare/v1.6.0%0Dv1.6.1) (2022-03-13)
 
 
