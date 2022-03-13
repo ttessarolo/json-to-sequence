@@ -102,7 +102,7 @@ export default class JSONSequencer extends Events {
     autoupdateFactor = 1,
     fillNA = false,
     NA = "X",
-    uniformTokenLength = true,
+    uniformTokenLength = false,
     tokenSeparator = " ",
     keyAlphabet = alphabet,
     valuesAlphabet = numbers,
@@ -372,6 +372,7 @@ export default class JSONSequencer extends Events {
       }
 
       const seq = d.join(this.tokenSeparator);
+
       if (this.verbose) console.log(seq.length, seq);
 
       this.emit("transform_data", { sequence: seq, chunk });
@@ -387,12 +388,25 @@ export default class JSONSequencer extends Events {
     return [multiple ? results : results[0], errors];
   }
 
-  fit_transform({ data, transformData, dataPath, outputStream, cb, shuffleValueAlphabets = true }) {
+  fit_transform({
+    data,
+    transformData,
+    dataPath,
+    outputStream,
+    cb,
+    shuffleValueAlphabets = false,
+  }) {
     if (isStream(data) && !transformData)
       throw new Error("Fit data is a stream you must provide transformData");
 
     this.fit({ data, shuffleValueAlphabets, dataPath });
-    return this.transform({ data: transformData ?? data, outputStream, cb, dataPath });
+    return this.transform({
+      data: transformData ?? data,
+      outputStream,
+      cb,
+      dataPath,
+      shuffleValueAlphabets,
+    });
   }
 
   async invert({ data, dataPath, outputStream, cb }) {
