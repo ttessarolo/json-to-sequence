@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.6.1](https://bitbucket.org/ttessarolo/json-to-sequence/branches/compare/v1.6.0%0Dv1.6.1) (2022-03-13)
+
+
+### Others
+
+* setModel API ([4294f1d](https://github.com/ttessarolo/json-to-sequence/commits/4294f1d9cf2421fb9b99e1bb8f27668d3ae61a45))
+
 ## [1.6.0](https://bitbucket.org/ttessarolo/json-to-sequence/branches/compare/v1.5.0%0Dv1.6.0) (2022-03-13)
 
 
