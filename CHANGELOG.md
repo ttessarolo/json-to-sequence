@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.7.0](https://bitbucket.org/ttessarolo/json-to-sequence/branches/compare/v1.6.3%0Dv1.7.0) (2022-03-16)
+
+
+### Features
+
+* now support for HASH mode ([97f0741](https://github.com/ttessarolo/json-to-sequence/commits/97f07415fe8af98bea4ad297ea84231f8af370a7))
+
 ### [1.6.3](https://bitbucket.org/ttessarolo/json-to-sequence/branches/compare/v1.6.2%0Dv1.6.3) (2022-03-13)
 
 
